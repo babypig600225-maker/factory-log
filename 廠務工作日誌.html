@@ -127,6 +127,7 @@
   .chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 
   .log-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;}
+  .log-card.editing{border-color:var(--accent);box-shadow:0 0 0 2px rgba(11,110,117,.12);}
   .log-card .top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
   .log-card .date{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--sub);}
   .log-card .content{font-size:14px;margin:6px 0;line-height:1.5;}
@@ -608,6 +609,9 @@ function renderStaffChips(){
   document.getElementById(id).addEventListener("change", renderList);
 });
 
+var editingId = null;
+var editProcRows = [];
+
 function renderList(){
   renderStaffChips();
   var kw = document.getElementById("fKeyword").value.trim().toLowerCase();
@@ -638,6 +642,10 @@ function renderList(){
   var html = "";
   if (list.length===0) html = '<p class="hint">沒有符合條件的紀錄</p>';
   list.forEach(function(l){
+    if (l.id === editingId){
+      html += renderEditCard(l);
+      return;
+    }
     var staffOptions = '<option value="">未指派</option>' + state.staff.map(function(n){
       return '<option value="'+n+'"'+(l.staff===n?" selected":"")+'>'+n+'</option>';
     }).join("");
@@ -660,9 +668,44 @@ function renderList(){
         (l.source==="external" ? '<span class="badge ext">外部提報</span>' : '')+
       '</div>'+
       (l.source==="external" ? '<div class="ext-note">📩 外部提報：'+escapeHtml(l.reporter||"")+(l.contact?"｜聯絡方式："+escapeHtml(l.contact):"")+'</div>' : '')+
+      '<div class="row-inline" style="margin-top:10px;">'+
+        '<button type="button" class="btn secondary small" data-action="edit">編輯</button>'+
+        '<button type="button" class="btn secondary small" data-action="delete">刪除</button>'+
+      '</div>'+
       '</div>';
   });
   document.getElementById("logList").innerHTML = html;
+}
+
+function renderEditCard(l){
+  var catOptions = CATEGORIES.map(function(c){
+    return '<option value="'+c+'"'+(l.category===c?" selected":"")+'>'+c+'</option>';
+  }).join("");
+  var procRowsHtml = "";
+  editProcRows.forEach(function(row,i){
+    procRowsHtml += '<div class="row-inline" style="margin-bottom:8px;">'+
+      '<input type="text" placeholder="品項" data-edit-proc="item" data-idx="'+i+'" value="'+escapeHtml(row.item)+'" style="flex:2;">'+
+      '<input type="text" placeholder="數量" data-edit-proc="qty" data-idx="'+i+'" value="'+escapeHtml(row.qty)+'" style="flex:1;">'+
+      '<button type="button" class="btn secondary small" data-action="edit-proc-remove" data-idx="'+i+'">刪除</button>'+
+      '</div>';
+  });
+  return '<div class="log-card editing" data-id="'+l.id+'">'+
+    '<div class="grid2">'+
+      '<div class="field"><label>日期</label><input type="date" data-edit="date" value="'+l.date+'"></div>'+
+      '<div class="field"><label>分類</label><select data-edit="category">'+catOptions+'</select></div>'+
+    '</div>'+
+    '<div class="field"><label>廠區/地點</label><input type="text" data-edit="area" list="areaOptions" value="'+escapeHtml(l.area)+'"></div>'+
+    '<div class="field"><label>工作內容</label><textarea data-edit="content">'+escapeHtml(l.content)+'</textarea></div>'+
+    '<div class="field"><label>備註</label><textarea data-edit="note">'+escapeHtml(l.note)+'</textarea></div>'+
+    '<div class="field"><label class="row-inline" style="cursor:pointer;"><input type="checkbox" data-edit="procToggle" style="width:auto;"'+(l.procurementNeeded?" checked":"")+'> 需要請購</label></div>'+
+    '<div data-edit-proc-wrap style="'+(l.procurementNeeded?"":"display:none;")+'margin-bottom:10px;">'+procRowsHtml+
+      '<button type="button" class="btn secondary small" data-action="edit-proc-add">+ 新增品項</button>'+
+    '</div>'+
+    '<div class="row-inline" style="margin-top:6px;">'+
+      '<button type="button" class="btn small" data-action="save-edit">儲存</button>'+
+      '<button type="button" class="btn secondary small" data-action="cancel-edit">取消</button>'+
+    '</div>'+
+  '</div>';
 }
 
 function escapeHtml(s){
@@ -671,10 +714,95 @@ function escapeHtml(s){
   });
 }
 
+document.getElementById("logList").addEventListener("click", function(e){
+  var card = e.target.closest(".log-card");
+  if (!card) return;
+  var id = card.dataset.id;
+
+  var editBtn = e.target.closest("[data-action='edit']");
+  if (editBtn){
+    var log = state.logs.find(function(x){ return x.id===id; });
+    editingId = id;
+    editProcRows = (log && log.procurementItems && log.procurementItems.length) ?
+      log.procurementItems.map(function(r){ return {item:r.item||"", qty:r.qty||""}; }) : [];
+    renderList();
+    return;
+  }
+
+  var delBtn = e.target.closest("[data-action='delete']");
+  if (delBtn){
+    if (!confirm("確定要刪除這筆紀錄嗎？此動作無法復原。")) return;
+    postAction({action:"delete", id:id}).then(function(res){
+      if (res && res.result==="success"){ toast("已刪除"); fetchData(); }
+      else toast("刪除失敗，請稍後再試");
+    }).catch(function(){ toast("刪除失敗，請確認網路連線"); });
+    return;
+  }
+
+  var cancelBtn = e.target.closest("[data-action='cancel-edit']");
+  if (cancelBtn){
+    editingId = null; editProcRows = [];
+    renderList();
+    return;
+  }
+
+  var saveBtn = e.target.closest("[data-action='save-edit']");
+  if (saveBtn){
+    var procOn = card.querySelector("[data-edit='procToggle']").checked;
+    var fields = {
+      date: card.querySelector("[data-edit='date']").value,
+      category: card.querySelector("[data-edit='category']").value,
+      area: card.querySelector("[data-edit='area']").value.trim(),
+      content: card.querySelector("[data-edit='content']").value.trim(),
+      note: card.querySelector("[data-edit='note']").value.trim(),
+      procurementNeeded: procOn,
+      procurementItems: procOn ? editProcRows.filter(function(r){ return r.item; }) : []
+    };
+    if (!fields.area || !fields.content){ toast("請填寫地點與工作內容"); return; }
+    postAction({action:"update", id:id, fields:fields}).then(function(res){
+      if (res && res.result==="success"){
+        toast("已更新");
+        editingId = null; editProcRows = [];
+        fetchData();
+      } else toast("更新失敗，請稍後再試");
+    }).catch(function(){ toast("更新失敗，請確認網路連線"); });
+    return;
+  }
+
+  var addProcBtn = e.target.closest("[data-action='edit-proc-add']");
+  if (addProcBtn){
+    editProcRows.push({item:"",qty:""});
+    renderList();
+    return;
+  }
+  var removeProcBtn = e.target.closest("[data-action='edit-proc-remove']");
+  if (removeProcBtn){
+    editProcRows.splice(+removeProcBtn.dataset.idx, 1);
+    renderList();
+    return;
+  }
+});
+
 document.getElementById("logList").addEventListener("change", function(e){
   var card = e.target.closest(".log-card");
   if (!card) return;
   var id = card.dataset.id;
+
+  var procToggle = e.target.closest("[data-edit='procToggle']");
+  if (procToggle){
+    var wrap = card.querySelector("[data-edit-proc-wrap]");
+    if (wrap) wrap.style.display = procToggle.checked ? "block" : "none";
+    if (procToggle.checked && editProcRows.length===0){ editProcRows.push({item:"",qty:""}); renderList(); }
+    return;
+  }
+  var procInput = e.target.closest("[data-edit-proc]");
+  if (procInput){
+    var idx = +procInput.dataset.idx;
+    var f = procInput.dataset.editProc;
+    if (editProcRows[idx]) editProcRows[idx][f] = procInput.value;
+    return;
+  }
+
   var statusSel = e.target.closest("select[data-action='status']");
   var assignSel = e.target.closest("select[data-action='assign']");
   if (statusSel){
