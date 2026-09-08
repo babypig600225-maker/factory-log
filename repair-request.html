@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>廠務報修申請</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EEF2F0;
+    --card:#FFFFFF;
+    --ink:#1B2521;
+    --sub:#5B6B63;
+    --accent:#0B6E75;
+    --accent-ink:#FFFFFF;
+    --line:#D8E0DB;
+    --pending:#B4650E;
+    --ok:#2E7D4F;
+    --err:#B3261E;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:32px 16px 64px;
+  }
+  .wrap{
+    width:100%;
+    max-width:560px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:20px;
+  }
+  .brand .mark{
+    width:36px;height:36px;border-radius:10px;
+    background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:16px;flex-shrink:0;
+  }
+  .brand h1{
+    font-size:19px;
+    margin:0;
+    font-weight:700;
+  }
+  .brand p{
+    margin:2px 0 0;
+    font-size:13px;
+    color:var(--sub);
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:24px;
+    box-shadow:0 1px 3px rgba(20,30,25,0.06);
+  }
+  label{
+    display:block;
+    font-size:13px;
+    font-weight:500;
+    color:var(--sub);
+    margin:0 0 6px;
+  }
+  .field{margin-bottom:16px;}
+  .required::after{
+    content:" *";
+    color:var(--err);
+  }
+  input, textarea{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:11px 12px;
+    font-size:15px;
+    font-family:inherit;
+    color:var(--ink);
+    background:#FCFDFC;
+  }
+  input:focus, textarea:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(11,110,117,0.12);
+  }
+  textarea{resize:vertical;min-height:88px;}
+  button{
+    width:100%;
+    border:none;
+    border-radius:10px;
+    padding:14px;
+    font-size:16px;
+    font-weight:700;
+    font-family:inherit;
+    background:var(--accent);
+    color:var(--accent-ink);
+    cursor:pointer;
+    margin-top:4px;
+  }
+  button:disabled{opacity:0.6;cursor:default;}
+  .msg{
+    margin-top:14px;
+    font-size:14px;
+    text-align:center;
+    min-height:20px;
+  }
+  .msg.ok{color:var(--ok);font-weight:500;}
+  .msg.err{color:var(--err);font-weight:500;}
+  .hint{
+    font-size:12px;
+    color:var(--sub);
+    margin-top:22px;
+    text-align:center;
+    line-height:1.6;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="mark">廠</div>
+    <div>
+      <h1>廠務報修申請</h1>
+      <p>設備、環境問題回報 — 免登入，填寫後廠務同仁將盡快處理</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <form id="repairForm">
+      <div class="field">
+        <label class="required" for="rName">姓名</label>
+        <input type="text" id="rName" required autocomplete="name">
+      </div>
+      <div class="field">
+        <label class="required" for="rDept">部門 / 單位</label>
+        <input type="text" id="rDept" required>
+      </div>
+      <div class="field">
+        <label class="required" for="rArea">地點</label>
+        <input type="text" id="rArea" placeholder="例：新廠3樓、舊廠倉庫..." required>
+      </div>
+      <div class="field">
+        <label class="required" for="rContent">問題描述</label>
+        <textarea id="rContent" placeholder="請描述設備或環境異常狀況" required></textarea>
+      </div>
+      <div class="field">
+        <label for="rContact">聯絡方式（選填）</label>
+        <input type="text" id="rContact" placeholder="分機、手機或Line皆可">
+      </div>
+      <button type="submit" id="submitBtn">送出申請</button>
+      <div class="msg" id="repairMsg"></div>
+    </form>
+  </div>
+
+  <p class="hint">此表單資料會直接送入廠務內部處理系統<br>如為緊急狀況，請直接電話聯繫廠務同仁</p>
+</div>
+
+<script>
+  // 部署 Apps Script 後，把網址貼在這裡（見 apps_script_code.gs 的部署說明）
+  var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFZ9Et4O1Hj2du_ZfA6osDjUfaEtnqPC5j9jy6wKDs0yBAhG3AXcRA9iM-Is33A0BUlQ/exec";
+
+  document.getElementById("repairForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    var msg = document.getElementById("repairMsg");
+    var btn = document.getElementById("submitBtn");
+
+    var name = document.getElementById("rName").value.trim();
+    var dept = document.getElementById("rDept").value.trim();
+    var area = document.getElementById("rArea").value.trim();
+    var content = document.getElementById("rContent").value.trim();
+    var contact = document.getElementById("rContact").value.trim();
+
+    if(!name || !dept || !area || !content){
+      msg.textContent = "請完整填寫姓名、部門、地點與問題描述";
+      msg.className = "msg err";
+      return;
+    }
+    if(SCRIPT_URL.indexOf("PASTE_YOUR") === 0){
+      msg.textContent = "尚未設定後端網址，請聯繫系統管理員";
+      msg.className = "msg err";
+      return;
+    }
+
+    btn.disabled = true;
+    msg.textContent = "送出中...";
+    msg.className = "msg";
+
+    fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "create",
+        staff: "", category: "其他", area: area, content: content, note: "",
+        status: "待處理", procurementNeeded: false, procurementItems: [],
+        source: "external", reporter: name + "（" + dept + "）", contact: contact
+      })
+    })
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      btn.disabled = false;
+      if(data && data.result === "success"){
+        msg.textContent = "✓ 已送出，感謝您的回報！";
+        msg.className = "msg ok";
+        document.getElementById("repairForm").reset();
+      } else {
+        msg.textContent = "送出失敗，請稍後再試";
+        msg.className = "msg err";
+      }
+    })
+    .catch(function(){
+      btn.disabled = false;
+      msg.textContent = "送出失敗，請確認網路連線後再試一次";
+      msg.className = "msg err";
+    });
+  });
+</script>
+</body>
+</html>

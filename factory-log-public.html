@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>廠務工作日誌</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EEF2F0;
+    --card:#FFFFFF;
+    --ink:#1B2521;
+    --sub:#5B6B63;
+    --accent:#0B6E75;
+    --accent-ink:#FFFFFF;
+    --line:#D8E0DB;
+    --pending:#B4650E;
+    --progress:#2B6CB0;
+    --done:#2E7D4F;
+    --err:#B3261E;
+    --chip:#E4ECE7;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+  .topbar{
+    background:var(--card);
+    border-bottom:1px solid var(--line);
+    padding:14px 20px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    position:sticky;top:0;z-index:20;
+  }
+  .topbar .mark{
+    width:36px;height:36px;border-radius:10px;
+    background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:16px;flex-shrink:0;
+  }
+  .topbar h1{font-size:17px;margin:0;font-weight:700;}
+  .topbar .clock{
+    margin-left:auto;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:13px;color:var(--sub);
+    display:flex;align-items:center;gap:8px;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--done);flex-shrink:0;}
+  .dot.stale{background:var(--pending);}
+  #dbBanner{
+    background:#FCE9CF;color:#7A4408;
+    font-size:13px;text-align:center;padding:0;
+    max-height:0;overflow:hidden;transition:max-height .2s, padding .2s;
+  }
+  #dbBanner.show{padding:8px 12px;max-height:60px;}
+
+  .wrap{max-width:920px;margin:0 auto;padding:20px 16px 0;}
+
+  .workload-card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;margin-bottom:16px;
+  }
+  .workload-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+  .workload-head h2{font-size:15px;margin:0;font-weight:700;}
+  .workload-head input[type=month]{
+    border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:13px;
+  }
+  #workloadAvgNote{font-size:12px;color:var(--sub);}
+  .wrow{display:flex;align-items:center;gap:10px;margin:8px 0;}
+  .wrow .wname{width:64px;font-size:13px;flex-shrink:0;}
+  .wrow .wbar-wrap{flex:1;background:var(--bg);border-radius:6px;height:20px;position:relative;overflow:visible;}
+  .wrow .wbar{height:100%;border-radius:6px;background:var(--accent);transition:width .3s;}
+  .wrow .wbar.high{background:var(--pending);}
+  .wrow .wavgline{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.35;}
+  .wrow .wval{width:112px;text-align:right;font-size:12px;color:var(--sub);flex-shrink:0;}
+
+  .stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}
+  .stat-tile{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;}
+  .stat-tile .num{font-size:26px;font-weight:800;font-family:"IBM Plex Mono",monospace;}
+  .stat-tile .lbl{font-size:12px;color:var(--sub);margin-top:2px;}
+
+  nav.tabs{display:flex;gap:4px;margin-bottom:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto;}
+  nav.tabs button{
+    flex:1;white-space:nowrap;border:none;background:transparent;padding:9px 12px;border-radius:9px;
+    font-family:inherit;font-size:13px;font-weight:500;color:var(--sub);cursor:pointer;
+  }
+  nav.tabs button.active{background:var(--accent);color:#fff;font-weight:700;}
+
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+  label{display:block;font-size:13px;font-weight:500;color:var(--sub);margin:0 0 6px;}
+  .field{margin-bottom:14px;}
+  .required::after{content:" *";color:var(--err);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  input[type=text],input[type=date],input[type=month],select,textarea{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;
+    font-family:inherit;color:var(--ink);background:#FCFDFC;
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(11,110,117,.12);}
+  textarea{resize:vertical;min-height:72px;}
+  .pillset{display:flex;gap:8px;flex-wrap:wrap;}
+  .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;font-family:inherit;}
+  .pill.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn{border:none;border-radius:10px;padding:11px 18px;font-size:14px;font-weight:700;font-family:inherit;background:var(--accent);color:#fff;cursor:pointer;}
+  .btn.secondary{background:var(--chip);color:var(--ink);}
+  .btn.small{padding:6px 12px;font-size:12px;border-radius:8px;}
+  .btn:disabled{opacity:.6;cursor:default;}
+  .row-inline{display:flex;gap:8px;align-items:center;}
+  .msg{margin-top:10px;font-size:13px;min-height:18px;}
+  .msg.ok{color:var(--done);font-weight:500;}
+  .msg.err{color:var(--err);font-weight:500;}
+
+  .filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .filter-bar > *{flex:1;min-width:120px;}
+  .staff-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;}
+  .chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+  .log-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;}
+  .log-card .top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+  .log-card .date{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--sub);}
+  .log-card .content{font-size:14px;margin:6px 0;line-height:1.5;}
+  .log-card .note{font-size:12.5px;color:var(--sub);background:var(--bg);border-radius:8px;padding:6px 10px;margin-top:6px;}
+  .log-card .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;}
+  .badge{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--chip);color:var(--sub);}
+  .badge.cat{background:#DCE9E4;color:var(--accent);}
+  .badge.ext{background:#F5DCC4;color:#7A4408;}
+  .badge.status-待處理{background:#FCE9CF;color:var(--pending);}
+  .badge.status-處理中{background:#DCE7F6;color:var(--progress);}
+  .badge.status-已完成{background:#DCEEE1;color:var(--done);}
+  select.staff-select, select.status-select{
+    font-size:12px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);font-family:inherit;background:#fff;
+  }
+  .ext-note{font-size:12px;color:#7A4408;margin-top:6px;}
+
+  .report-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+  .bar-list .brow{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px;}
+  .bar-list .brow .bn{width:96px;flex-shrink:0;}
+  .bar-list .brow .bb-wrap{flex:1;background:var(--bg);border-radius:6px;height:16px;}
+  .bar-list .brow .bb{height:100%;border-radius:6px;background:var(--accent);}
+  .bar-list .brow .bv{width:36px;text-align:right;font-size:12px;color:var(--sub);}
+  table.proc-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;}
+  table.proc-table th,table.proc-table td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;}
+
+  #toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;
+    opacity:0;pointer-events:none;transition:opacity .25s, transform .25s;z-index:50;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+
+  h3.sec{font-size:14px;margin:18px 0 8px;font-weight:700;}
+  .hint{font-size:12px;color:var(--sub);}
+  @media(max-width:520px){
+    .stats-row,.report-stats{grid-template-columns:1fr 1fr;}
+    .grid2{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="mark">廠</div>
+  <h1>廠務工作日誌</h1>
+  <div class="clock"><span class="dot" id="syncDot"></span><span id="clock"></span></div>
+</div>
+<div id="dbBanner"></div>
+
+<div class="wrap">
+
+  <div class="workload-card">
+    <div class="workload-head">
+      <h2>同仁工作量</h2>
+      <input type="month" id="workloadMonth">
+    </div>
+    <div id="workloadAvgNote"></div>
+    <div id="workloadList"></div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-tile"><div class="num" id="statToday">0</div><div class="lbl">本月已回報</div></div>
+    <div class="stat-tile"><div class="num" id="statOpen">0</div><div class="lbl">待處理／處理中</div></div>
+    <div class="stat-tile"><div class="num" id="statProc">0</div><div class="lbl">本月待請購項目</div></div>
+  </div>
+
+  <nav class="tabs">
+    <button data-tab="entry" class="active">快速回報</button>
+    <button data-tab="list">日誌總覽</button>
+    <button data-tab="report">月報表</button>
+    <button data-tab="repair">報修申請</button>
+  </nav>
+
+  <section class="panel active" id="tab-entry">
+    <div class="card">
+      <form id="entryForm">
+        <div class="grid2">
+          <div class="field">
+            <label class="required">日期</label>
+            <input type="date" id="eDate" required>
+          </div>
+          <div class="field">
+            <label class="required">同仁</label>
+            <div class="row-inline">
+              <select id="eStaff" required style="flex:1;"></select>
+              <button type="button" class="btn secondary small" id="addStaffBtn">+ 新增</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="required">分類</label>
+            <select id="eCategory" required></select>
+          </div>
+          <div class="field">
+            <label class="required">廠區/地點</label>
+            <input type="text" id="eArea" list="areaOptions" placeholder="例：3樓、新廠4樓" required>
+            <datalist id="areaOptions">
+              <option value="1樓"><option value="2樓"><option value="3樓"><option value="4樓">
+              <option value="5樓"><option value="6樓"><option value="7樓">
+              <option value="新廠1樓"><option value="新廠2樓"><option value="新廠3樓"><option value="新廠4樓">
+              <option value="舊廠1樓"><option value="舊廠2樓"><option value="舊廠3樓"><option value="舊廠4樓">
+              <option value="戶外/花圃魚池"><option value="未分類">
+            </datalist>
+          </div>
+        </div>
+        <div class="field">
+          <label class="required">狀態</label>
+          <div class="pillset" id="eStatusPills">
+            <button type="button" class="pill active" data-val="待處理">待處理</button>
+            <button type="button" class="pill" data-val="處理中">處理中</button>
+            <button type="button" class="pill" data-val="已完成">已完成</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="required">工作內容</label>
+          <textarea id="eContent" required></textarea>
+        </div>
+        <div class="field">
+          <label>備註</label>
+          <textarea id="eNote"></textarea>
+        </div>
+        <div class="field">
+          <label class="row-inline" style="cursor:pointer;">
+            <input type="checkbox" id="eProcToggle" style="width:auto;"> 需要請購
+          </label>
+        </div>
+        <div id="eProcRows" style="display:none;margin-bottom:12px;"></div>
+        <button type="button" class="btn secondary small" id="addProcRow" style="display:none;margin-bottom:14px;">+ 新增品項</button>
+        <button type="submit" class="btn" id="entrySubmitBtn">送出回報</button>
+        <div class="msg" id="entryMsg"></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel" id="tab-list">
+    <div class="card">
+      <div class="filter-bar">
+        <input type="text" id="fKeyword" placeholder="搜尋關鍵字...">
+        <input type="date" id="fFrom">
+        <input type="date" id="fTo">
+        <select id="fCategory"><option value="">全部分類</option></select>
+        <select id="fStatus"><option value="">全部狀態</option><option value="待處理">待處理</option><option value="處理中">處理中</option><option value="已完成">已完成</option></select>
+      </div>
+      <label class="row-inline" style="cursor:pointer;font-size:12px;margin-bottom:10px;">
+        <input type="checkbox" id="fProcOnly" style="width:auto;"> 只看需請購項目
+      </label>
+      <div class="staff-chips" id="staffChips"></div>
+      <div id="logList"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="tab-report">
+    <div class="card">
+      <div class="field" style="max-width:200px;">
+        <label>月份</label>
+        <input type="month" id="rMonth">
+      </div>
+      <div class="report-stats">
+        <div class="stat-tile"><div class="num" id="repTotal">0</div><div class="lbl">本月總回報數</div></div>
+        <div class="stat-tile"><div class="num" id="repDone">0</div><div class="lbl">已完成</div></div>
+        <div class="stat-tile"><div class="num" id="repOpen">0</div><div class="lbl">跨月未結</div></div>
+      </div>
+      <h3 class="sec">依同仁</h3>
+      <div class="bar-list" id="repByStaff"></div>
+      <h3 class="sec">依分類</h3>
+      <div class="bar-list" id="repByCategory"></div>
+      <h3 class="sec">跨月未結項目</h3>
+      <div id="repRollover"></div>
+      <h3 class="sec">請購彙整</h3>
+      <table class="proc-table" id="repProcTable">
+        <thead><tr><th>日期</th><th>同仁</th><th>內容</th><th>請購品項</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row-inline" style="margin-top:14px;">
+        <button class="btn secondary small" id="exportCsvBtn">匯出本月 CSV</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="tab-repair">
+    <div class="card">
+      <p class="hint" style="margin-top:0;">給廠務以外的同仁使用，免登入，填寫後會直接進到廠務處理清單。</p>
+      <form id="repairForm">
+        <div class="grid2">
+          <div class="field"><label class="required">姓名</label><input type="text" id="rName" required></div>
+          <div class="field"><label class="required">部門/單位</label><input type="text" id="rDept" required></div>
+        </div>
+        <div class="field"><label class="required">地點</label><input type="text" id="rArea" placeholder="例：新廠3樓" required></div>
+        <div class="field"><label class="required">問題描述</label><textarea id="rContent" required></textarea></div>
+        <div class="field"><label>聯絡方式（選填）</label><input type="text" id="rContact" placeholder="分機、手機或Line皆可"></div>
+        <button type="submit" class="btn" id="repairSubmitBtn">送出申請</button>
+        <div class="msg" id="repairMsg"></div>
+      </form>
+    </div>
+  </section>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+// 部署 Apps Script 後，把網址貼在這裡
+var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFZ9Et4O1Hj2du_ZfA6osDjUfaEtnqPC5j9jy6wKDs0yBAhG3AXcRA9iM-Is33A0BUlQ/exec";
+
+var CATEGORIES = ["電力/照明","空調/環境監測","空壓/冰水機","RO純水/水質","水塔/水池/魚池","消防/安全","污水/廢水","土木/建築","門禁/保全","其他"];
+var DEFAULT_STAFF = ["蔡定宏","戴金源","李嘉昌"];
+var STATUS_LIST = ["待處理","處理中","已完成"];
+
+var state = { logs: [], staff: DEFAULT_STAFF.slice(), procRows: [] };
+
+function pad(n){ return n<10 ? "0"+n : ""+n; }
+function todayISO(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function monthKey(dateStr){ return (dateStr||"").slice(0,7); }
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(function(){ t.classList.remove("show"); }, 2200);
+}
+function showBanner(msg){
+  var b = document.getElementById("dbBanner");
+  if(!msg){ b.classList.remove("show"); b.textContent=""; return; }
+  b.textContent = msg; b.classList.add("show");
+}
+
+// ---------- clock ----------
+function tickClock(){
+  var d = new Date();
+  document.getElementById("clock").textContent =
+    d.getFullYear()+"/"+pad(d.getMonth()+1)+"/"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
+tickClock(); setInterval(tickClock, 30000);
+
+// ---------- data fetch ----------
+var fetching = false;
+function fetchData(){
+  if (SCRIPT_URL.indexOf("PASTE_YOUR") === 0){
+    showBanner("尚未設定後端網址（SCRIPT_URL），請聯繫系統管理員完成部署");
+    return;
+  }
+  if (fetching) return;
+  fetching = true;
+  fetch(SCRIPT_URL, { method:"GET" })
+    .then(function(res){ return res.json(); })
+    .then(function(data){
+      fetching = false;
+      if (data && data.result === "success"){
+        state.logs = data.logs || [];
+        var extra = {};
+        state.logs.forEach(function(l){ if(l.staff) extra[l.staff]=true; });
+        var merged = DEFAULT_STAFF.slice();
+        Object.keys(extra).forEach(function(n){ if(merged.indexOf(n)===-1) merged.push(n); });
+        state.staff = merged;
+        showBanner("");
+        document.getElementById("syncDot").classList.remove("stale");
+        onDataChanged();
+      } else {
+        showBanner("資料讀取發生問題，請稍後重新整理頁面");
+        document.getElementById("syncDot").classList.add("stale");
+      }
+    })
+    .catch(function(){
+      fetching = false;
+      showBanner("無法連線到資料庫，請確認網路連線");
+      document.getElementById("syncDot").classList.add("stale");
+    });
+}
+
+function postAction(payload){
+  return fetch(SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  }).then(function(res){ return res.json(); });
+}
+
+function onDataChanged(){
+  populateStaffSelect();
+  populateCategorySelects();
+  renderWorkload();
+  renderStats();
+  renderList();
+  renderReport();
+}
+
+// ---------- tabs ----------
+document.querySelectorAll("nav.tabs button").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll("nav.tabs button").forEach(function(b){ b.classList.remove("active"); });
+    document.querySelectorAll(".panel").forEach(function(p){ p.classList.remove("active"); });
+    btn.classList.add("active");
+    document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- populate selects ----------
+function populateStaffSelect(){
+  var sel = document.getElementById("eStaff");
+  var cur = sel.value;
+  sel.innerHTML = "";
+  state.staff.forEach(function(n){
+    var o = document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o);
+  });
+  if (state.staff.indexOf(cur) !== -1) sel.value = cur;
+}
+function populateCategorySelects(){
+  ["eCategory","fCategory"].forEach(function(id){
+    var sel = document.getElementById(id);
+    var cur = sel.value;
+    var keepFirst = id==="fCategory";
+    sel.innerHTML = keepFirst ? '<option value="">全部分類</option>' : "";
+    CATEGORIES.forEach(function(c){
+      var o = document.createElement("option"); o.value=c; o.textContent=c; sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+  });
+}
+
+// ---------- workload widget ----------
+document.getElementById("workloadMonth").addEventListener("change", renderWorkload);
+(function initWorkloadMonth(){
+  var d = new Date();
+  document.getElementById("workloadMonth").value = d.getFullYear()+"-"+pad(d.getMonth()+1);
+})();
+
+function renderWorkload(){
+  var monthInput = document.getElementById("workloadMonth");
+  var monthSel = monthInput.value || todayISO().slice(0,7);
+  var isCurrentMonth = monthSel === todayISO().slice(0,7);
+  var perStaff = state.staff.map(function(name){
+    var monthCount = state.logs.filter(function(l){ return l.staff===name && monthKey(l.date)===monthSel; }).length;
+    var openCount = state.logs.filter(function(l){ return l.staff===name && l.status!=="已完成"; }).length;
+    return { name:name, monthCount:monthCount, openCount:openCount };
+  });
+  var total = perStaff.reduce(function(s,p){ return s+p.monthCount; }, 0);
+  var avg = perStaff.length ? total/perStaff.length : 0;
+  var maxVal = Math.max.apply(null, perStaff.map(function(p){ return p.monthCount; }).concat([1]));
+  var avgPct = Math.min(100, (avg/maxVal)*100);
+  var monthLabel = monthSel.replace("-","年")+"月";
+  document.getElementById("workloadAvgNote").textContent =
+    monthLabel+" 平均每人 "+avg.toFixed(1)+" 筆" + (isCurrentMonth ? "" : "（回顧月份）");
+  var openLabel = isCurrentMonth ? "待處理中" : "累計未結";
+  var html = "";
+  perStaff.forEach(function(p){
+    var pct = Math.min(100, (p.monthCount/maxVal)*100);
+    var high = p.monthCount > avg*1.3 && avg>0;
+    html += '<div class="wrow"><div class="wname">'+p.name+'</div>'+
+      '<div class="wbar-wrap"><div class="wbar'+(high?' high':'')+'" style="width:'+pct+'%"></div>'+
+      '<div class="wavgline" style="left:'+avgPct+'%"></div></div>'+
+      '<div class="wval">'+p.monthCount+' 筆・'+openLabel+' '+p.openCount+'</div></div>';
+  });
+  document.getElementById("workloadList").innerHTML = html;
+}
+
+// ---------- stats ----------
+function renderStats(){
+  var curMonth = todayISO().slice(0,7);
+  var monthLogs = state.logs.filter(function(l){ return monthKey(l.date)===curMonth; });
+  document.getElementById("statToday").textContent = monthLogs.length;
+  document.getElementById("statOpen").textContent = state.logs.filter(function(l){ return l.status!=="已完成"; }).length;
+  document.getElementById("statProc").textContent = monthLogs.filter(function(l){ return l.procurementNeeded; }).length;
+}
+
+// ---------- entry form ----------
+document.getElementById("eDate").value = todayISO();
+document.getElementById("eStatusPills").addEventListener("click", function(e){
+  var b = e.target.closest(".pill"); if(!b) return;
+  document.querySelectorAll("#eStatusPills .pill").forEach(function(p){ p.classList.remove("active"); });
+  b.classList.add("active");
+});
+document.getElementById("addStaffBtn").addEventListener("click", function(){
+  var name = prompt("輸入新同仁姓名：");
+  if(!name) return;
+  name = name.trim();
+  if(!name) return;
+  if (state.staff.indexOf(name)===-1) state.staff.push(name);
+  populateStaffSelect();
+  document.getElementById("eStaff").value = name;
+});
+document.getElementById("eProcToggle").addEventListener("change", function(){
+  var on = this.checked;
+  document.getElementById("eProcRows").style.display = on ? "block":"none";
+  document.getElementById("addProcRow").style.display = on ? "inline-block":"none";
+  if (on && state.procRows.length===0) addProcRow();
+});
+function addProcRow(){
+  var idx = state.procRows.length;
+  state.procRows.push({item:"",qty:""});
+  renderProcRows();
+}
+function renderProcRows(){
+  var wrap = document.getElementById("eProcRows");
+  wrap.innerHTML = "";
+  state.procRows.forEach(function(row,i){
+    var div = document.createElement("div");
+    div.className = "row-inline"; div.style.marginBottom="8px";
+    div.innerHTML = '<input type="text" placeholder="品項" data-idx="'+i+'" data-f="item" style="flex:2;">'+
+      '<input type="text" placeholder="數量" data-idx="'+i+'" data-f="qty" style="flex:1;">'+
+      '<button type="button" class="btn secondary small" data-remove="'+i+'">刪除</button>';
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll("input").forEach(function(inp){
+    inp.addEventListener("input", function(){
+      state.procRows[+this.dataset.idx][this.dataset.f] = this.value;
+    });
+  });
+  wrap.querySelectorAll("[data-remove]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      state.procRows.splice(+this.dataset.remove,1);
+      renderProcRows();
+    });
+  });
+}
+document.getElementById("addProcRow").addEventListener("click", addProcRow);
+
+document.getElementById("entryForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var msg = document.getElementById("entryMsg");
+  var btn = document.getElementById("entrySubmitBtn");
+  var statusBtn = document.querySelector("#eStatusPills .pill.active");
+  var payload = {
+    action: "create",
+    date: document.getElementById("eDate").value,
+    staff: document.getElementById("eStaff").value,
+    category: document.getElementById("eCategory").value,
+    area: document.getElementById("eArea").value.trim(),
+    content: document.getElementById("eContent").value.trim(),
+    note: document.getElementById("eNote").value.trim(),
+    status: statusBtn ? statusBtn.dataset.val : "待處理",
+    procurementNeeded: document.getElementById("eProcToggle").checked,
+    procurementItems: document.getElementById("eProcToggle").checked ?
+      state.procRows.filter(function(r){return r.item;}) : [],
+    source: "internal"
+  };
+  if (!payload.area || !payload.content){
+    msg.textContent = "請完整填寫地點與工作內容"; msg.className="msg err"; return;
+  }
+  btn.disabled = true; msg.textContent="送出中..."; msg.className="msg";
+  postAction(payload).then(function(res){
+    btn.disabled = false;
+    if (res && res.result==="success"){
+      msg.textContent="✓ 已送出"; msg.className="msg ok";
+      document.getElementById("eContent").value="";
+      document.getElementById("eNote").value="";
+      document.getElementById("eProcToggle").checked=false;
+      document.getElementById("eProcRows").style.display="none";
+      document.getElementById("addProcRow").style.display="none";
+      state.procRows=[];
+      toast("回報已送出");
+      fetchData();
+    } else {
+      msg.textContent="送出失敗，請稍後再試"; msg.className="msg err";
+    }
+  }).catch(function(){
+    btn.disabled=false; msg.textContent="送出失敗，請確認網路連線"; msg.className="msg err";
+  });
+});
+
+// ---------- list / filters ----------
+var selectedStaffFilter = "";
+function renderStaffChips(){
+  var wrap = document.getElementById("staffChips");
+  var html = '<span class="chip'+(selectedStaffFilter===""?" active":"")+'" data-name="">全部同仁</span>';
+  state.staff.forEach(function(n){
+    html += '<span class="chip'+(selectedStaffFilter===n?" active":"")+'" data-name="'+n+'">'+n+'</span>';
+  });
+  wrap.innerHTML = html;
+  wrap.querySelectorAll(".chip").forEach(function(c){
+    c.addEventListener("click", function(){
+      selectedStaffFilter = this.dataset.name;
+      renderStaffChips(); renderList();
+    });
+  });
+}
+["fKeyword","fFrom","fTo","fCategory","fStatus","fProcOnly"].forEach(function(id){
+  document.getElementById(id).addEventListener("input", renderList);
+  document.getElementById(id).addEventListener("change", renderList);
+});
+
+function renderList(){
+  renderStaffChips();
+  var kw = document.getElementById("fKeyword").value.trim().toLowerCase();
+  var from = document.getElementById("fFrom").value;
+  var to = document.getElementById("fTo").value;
+  var cat = document.getElementById("fCategory").value;
+  var status = document.getElementById("fStatus").value;
+  var procOnly = document.getElementById("fProcOnly").checked;
+
+  var list = state.logs.filter(function(l){
+    if (selectedStaffFilter && l.staff!==selectedStaffFilter) return false;
+    if (cat && l.category!==cat) return false;
+    if (status && l.status!==status) return false;
+    if (procOnly && !l.procurementNeeded) return false;
+    if (from && l.date < from) return false;
+    if (to && l.date > to) return false;
+    if (kw){
+      var hay = ((l.content||"")+" "+(l.note||"")+" "+(l.area||"")+" "+(l.reporter||"")).toLowerCase();
+      if (hay.indexOf(kw)===-1) return false;
+    }
+    return true;
+  });
+  list.sort(function(a,b){
+    if (a.date!==b.date) return a.date<b.date ? 1 : -1;
+    return (b.createdAt||"") < (a.createdAt||"") ? -1 : 1;
+  });
+
+  var html = "";
+  if (list.length===0) html = '<p class="hint">沒有符合條件的紀錄</p>';
+  list.forEach(function(l){
+    var staffOptions = '<option value="">未指派</option>' + state.staff.map(function(n){
+      return '<option value="'+n+'"'+(l.staff===n?" selected":"")+'>'+n+'</option>';
+    }).join("");
+    var statusOptions = STATUS_LIST.map(function(s){
+      return '<option value="'+s+'"'+(l.status===s?" selected":"")+'>'+s+'</option>';
+    }).join("");
+    html += '<div class="log-card" data-id="'+l.id+'">'+
+      '<div class="top"><span class="date">'+l.date+'</span>'+
+      '<div class="row-inline">'+
+        '<select class="staff-select" data-action="assign">'+staffOptions+'</select>'+
+        '<select class="status-select" data-action="status">'+statusOptions+'</select>'+
+      '</div></div>'+
+      '<div class="content">'+escapeHtml(l.content)+'</div>'+
+      (l.note ? '<div class="note">'+escapeHtml(l.note)+'</div>' : '')+
+      '<div class="meta">'+
+        '<span class="badge cat">'+l.category+'</span>'+
+        '<span class="badge">'+l.area+'</span>'+
+        '<span class="badge status-'+l.status+'">'+l.status+'</span>'+
+        (l.procurementNeeded ? '<span class="badge">待請購</span>' : '')+
+        (l.source==="external" ? '<span class="badge ext">外部提報</span>' : '')+
+      '</div>'+
+      (l.source==="external" ? '<div class="ext-note">📩 外部提報：'+escapeHtml(l.reporter||"")+(l.contact?"｜聯絡方式："+escapeHtml(l.contact):"")+'</div>' : '')+
+      '</div>';
+  });
+  document.getElementById("logList").innerHTML = html;
+}
+
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+document.getElementById("logList").addEventListener("change", function(e){
+  var card = e.target.closest(".log-card");
+  if (!card) return;
+  var id = card.dataset.id;
+  var statusSel = e.target.closest("select[data-action='status']");
+  var assignSel = e.target.closest("select[data-action='assign']");
+  if (statusSel){
+    postAction({action:"update", id:id, fields:{status: statusSel.value}}).then(function(res){
+      if (res && res.result==="success"){ toast("狀態已更新"); fetchData(); }
+      else toast("更新失敗，請稍後再試");
+    }).catch(function(){ toast("更新失敗，請確認網路連線"); });
+  }
+  if (assignSel){
+    postAction({action:"update", id:id, fields:{staff: assignSel.value}}).then(function(res){
+      if (res && res.result==="success"){ toast("已指派"); fetchData(); }
+      else toast("指派失敗，請稍後再試");
+    }).catch(function(){ toast("指派失敗，請確認網路連線"); });
+  }
+});
+
+// ---------- report ----------
+document.getElementById("rMonth").addEventListener("change", renderReport);
+(function initReportMonth(){
+  var d = new Date();
+  document.getElementById("rMonth").value = d.getFullYear()+"-"+pad(d.getMonth()+1);
+})();
+
+function renderReport(){
+  var m = document.getElementById("rMonth").value || todayISO().slice(0,7);
+  var monthLogs = state.logs.filter(function(l){ return monthKey(l.date)===m; });
+  document.getElementById("repTotal").textContent = monthLogs.length;
+  document.getElementById("repDone").textContent = monthLogs.filter(function(l){return l.status==="已完成";}).length;
+  var rollover = state.logs.filter(function(l){ return l.status!=="已完成" && monthKey(l.date)<=m; });
+  document.getElementById("repOpen").textContent = rollover.length;
+
+  function barList(targetId, groupFn, keys){
+    var counts = {};
+    keys.forEach(function(k){ counts[k]=0; });
+    monthLogs.forEach(function(l){ var k=groupFn(l); if(k in counts) counts[k]++; else counts[k]=(counts[k]||0)+1; });
+    var max = Math.max.apply(null, Object.values(counts).concat([1]));
+    var html = "";
+    Object.keys(counts).forEach(function(k){
+      if (counts[k]===0 && keys.indexOf(k)===-1) return;
+      var pct = (counts[k]/max)*100;
+      html += '<div class="brow"><div class="bn">'+k+'</div><div class="bb-wrap"><div class="bb" style="width:'+pct+'%"></div></div><div class="bv">'+counts[k]+'</div></div>';
+    });
+    document.getElementById(targetId).innerHTML = html || '<p class="hint">尚無資料</p>';
+  }
+  barList("repByStaff", function(l){return l.staff||"未指派";}, state.staff);
+  barList("repByCategory", function(l){return l.category;}, CATEGORIES);
+
+  var rollHtml = "";
+  if (rollover.length===0) rollHtml = '<p class="hint">沒有跨月未結項目</p>';
+  rollover.sort(function(a,b){ return a.date<b.date?-1:1; });
+  rollover.forEach(function(l){
+    rollHtml += '<div class="log-card"><div class="top"><span class="date">'+l.date+'</span>'+
+      '<span class="badge status-'+l.status+'">'+l.status+'</span></div>'+
+      '<div class="content">'+escapeHtml(l.content)+'</div>'+
+      '<div class="meta"><span class="badge">'+(l.staff||"未指派")+'</span><span class="badge cat">'+l.category+'</span>'+
+      (l.source==="external"?'<span class="badge ext">外部提報</span>':'')+'</div></div>';
+  });
+  document.getElementById("repRollover").innerHTML = rollHtml;
+
+  var procRows = monthLogs.filter(function(l){ return l.procurementNeeded; });
+  var tbody = document.querySelector("#repProcTable tbody");
+  tbody.innerHTML = "";
+  procRows.forEach(function(l){
+    var items = (l.procurementItems||[]).map(function(it){ return it.item+(it.qty?" x"+it.qty:""); }).join("、");
+    var tr = document.createElement("tr");
+    tr.innerHTML = "<td>"+l.date+"</td><td>"+(l.staff||"未指派")+"</td><td>"+escapeHtml(l.content)+"</td><td>"+escapeHtml(items)+"</td>";
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("exportCsvBtn").addEventListener("click", function(){
+  var m = document.getElementById("rMonth").value || todayISO().slice(0,7);
+  var monthLogs = state.logs.filter(function(l){ return monthKey(l.date)===m; });
+  var rows = [["日期","同仁","分類","地點","內容","備註","狀態","待請購","來源"]];
+  monthLogs.forEach(function(l){
+    rows.push([l.date,l.staff,l.category,l.area,l.content,l.note,l.status,l.procurementNeeded?"是":"否", l.source==="external"?"外部("+l.reporter+")":"內部"]);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){ return '"'+String(c==null?"":c).replace(/"/g,'""')+'"'; }).join(",");
+  }).join("\n");
+  var blob = new Blob(["﻿"+csv], {type:"text/csv;charset=utf-8;"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = "廠務工作日誌_"+m+".csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// ---------- repair form ----------
+document.getElementById("repairForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var msg = document.getElementById("repairMsg");
+  var btn = document.getElementById("repairSubmitBtn");
+  var name = document.getElementById("rName").value.trim();
+  var dept = document.getElementById("rDept").value.trim();
+  var area = document.getElementById("rArea").value.trim();
+  var content = document.getElementById("rContent").value.trim();
+  var contact = document.getElementById("rContact").value.trim();
+  if (!name || !dept || !area || !content){
+    msg.textContent="請完整填寫姓名、部門、地點與問題描述"; msg.className="msg err"; return;
+  }
+  btn.disabled = true; msg.textContent="送出中..."; msg.className="msg";
+  postAction({
+    action: "create",
+    staff: "", category: "其他", area: area, content: content, note: "",
+    status: "待處理", procurementNeeded: false, procurementItems: [],
+    source: "external", reporter: name+"（"+dept+"）", contact: contact
+  }).then(function(res){
+    btn.disabled = false;
+    if (res && res.result==="success"){
+      msg.textContent="✓ 已送出，感謝您的回報！"; msg.className="msg ok";
+      document.getElementById("repairForm").reset();
+      fetchData();
+    } else {
+      msg.textContent="送出失敗，請稍後再試"; msg.className="msg err";
+    }
+  }).catch(function(){
+    btn.disabled=false; msg.textContent="送出失敗，請確認網路連線後再試一次"; msg.className="msg err";
+  });
+});
+
+// ---------- init ----------
+populateCategorySelects();
+populateStaffSelect();
+renderStaffChips();
+fetchData();
+setInterval(fetchData, 20000);
+window.addEventListener("focus", fetchData);
+</script>
+</body>
+</html>
